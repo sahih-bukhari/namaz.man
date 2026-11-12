@@ -1,11 +1,14 @@
 
-name: Build Android APK
+name: Build Qaza Man Android APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -19,25 +22,61 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.13.0
 
-      - name: Check project
+      - name: Extract ZIP and locate project
+        id: locate
+        shell: bash
         run: |
-          ls -la
-          test -f package.json
+          ZIP_PATH="$GITHUB_WORKSPACE/qaza-man-source.zip"
 
-      - name: Install dependencies
-        run: npm install
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "::error::qaza-man-source.zip was not found."
+            exit 1
+          fi
 
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
+          mkdir -p "$RUNNER_TEMP/qaza-man-source"
+          unzip -q "$ZIP_PATH" -d "$RUNNER_TEMP/qaza-man-source"
 
-      - name: Build Android APK
-        run: |
-          eas build \
-            --platform android \
-            --profile preview \
-            --non-interactive
+          PACKAGE_JSON="$(find "$RUNNER_TEMP/qaza-man-source" -type f -name package.json -not -path '*/node_modules/*' -print -quit)"
+
+          if [ -z "$PACKAGE_JSON" ]; then
+            echo "::error::package.json not found inside ZIP."
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$PACKAGE_JSON")"
+
+          if [ ! -f "$PROJECT_DIR/app.json" ] || [ ! -f "$PROJECT_DIR/eas.json" ]; then
+            echo "::error::app.json or eas.json is missing."
+            exit 1
+          fi
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Project found: $PROJECT_DIR"
+
+      - name: Install project dependencies
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        run: npm install --no-audit --no-fund
+
+      - name: Check Expo authentication
+        shell: bash
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::Add EXPO_TOKEN in GitHub Secrets."
+            exit 1
+          fi
 
+      - name: Link or create Expo project
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest init --force --non-interactive
+
+      - name: Build Android APK
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest build --platform android --profile preview --non-interactive
