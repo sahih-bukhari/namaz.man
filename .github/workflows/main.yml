@@ -1,5 +1,5 @@
 
-name: Build Qaza Man Android APK
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Qaza Man APK
     runs-on: ubuntu-latest
 
     steps:
@@ -20,20 +20,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+
+      - name: Check project
+        run: |
+          ls -la
+          test -f package.json
 
       - name: Install dependencies
         run: npm install
 
-      - name: Check project files
-        run: |
-          test -f package.json
-          echo "Project files found"
-
-      - name: Setup Expo
+      - name: Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: Build APK with Expo EAS
+      - name: Build Android APK
         run: |
           eas build \
             --platform android \
@@ -41,3 +40,4 @@ jobs:
             --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
